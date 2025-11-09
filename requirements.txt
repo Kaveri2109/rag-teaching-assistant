@@ -1,0 +1,26 @@
+# RAG-Based AI Teaching Assistant - Dependencies
+
+# Core ML/AI Libraries
+openai-whisper==20231117
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# Vector Storage & Retrieval
+joblib>=1.3.0
+
+# API & Web Requests
+requests>=2.31.0
+
+# Audio/Video Processing
+ffmpeg-python>=0.2.0
+
+# Optional: GPU Acceleration
+# faiss-gpu>=1.7.4  # Uncomment if using GPU
+
+# Note: Ollama must be installed separately
+# Visit: https://ollama.ai for installation instructions
