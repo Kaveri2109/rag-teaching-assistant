@@ -1,4 +1,5 @@
 # RAG-Based AI Teaching Assistant
+IEEE Published Research | Kaggle Top 10% | GATE 2025
 
 > Intelligent Q&A system for educational videos using Retrieval-Augmented Generation
 
