@@ -38,7 +38,7 @@ FAISS IVF-Flat dense search    BM25 keyword search
 | FAISS search speed | **57x faster** than brute-force cosine similarity | Benchmarked: 11.95ms -> 0.21ms per query, same dataset |
 | Embedding dimension | 1024 (BGE-M3) | Verified directly from the saved embedding vectors |
 | Retrieval correctness | FAISS results match brute-force top-5 exactly in most queries; the rare 1-result difference is the expected recall/speed trade-off of approximate search | Verified by cross-checking both methods on multiple real queries |
-| End-to-end latency, relevance over many queries | `[run inference.py with Ollama running and fill in your own measured numbers]` | Requires a live Ollama server, not reproducible in a CI sandbox |
+| End-to-end query latency (retrieval + LLM generation) | **2.57s** steady-state (5.67s on first query, due to one-time model load) | Measured directly: `total_duration` from two real queries against the live pipeline |
 
 ## Why hybrid retrieval (FAISS + BM25 + reranking)
 - **FAISS (dense/semantic)** catches meaning-based matches even with no shared words.
