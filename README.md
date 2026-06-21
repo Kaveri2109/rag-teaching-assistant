@@ -1,184 +1,100 @@
 # RAG-Based AI Teaching Assistant
 IEEE Published Research | Kaggle Top 10% | GATE 2025
 
-> Intelligent Q&A system for educational videos using Retrieval-Augmented Generation
+Intelligent Q&A system for educational videos using Retrieval-Augmented Generation, with hybrid (dense + keyword) retrieval and cross-encoder reranking.
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
-[![Whisper](https://img.shields.io/badge/Whisper-large--v2-green.svg)](https://github.com/openai/whisper)
-[![LLaMA](https://img.shields.io/badge/LLM-LLaMA_3.2-orange.svg)](https://ai.meta.com/llama/)
+## Overview
+Processes real lecture video content (7,252 chunks transcribed from 18 real videos via Whisper) into a queryable Q&A system. Given a question, it retrieves the most relevant lecture moments and answers with the exact video and timestamp.
 
-##  Overview
+## Architecture
 
-Built a Retrieval-Augmented Generation system that processes 50+ hours of lecture videos, achieving **70% faster query response** using GPU-accelerated FAISS and Whisper STT. The system handles 1000+ queries with **90%+ relevance** through an optimized embedding pipeline.
-
-##  Key Features
-
-- **Automatic Transcription**: Converts video lectures to text using Whisper large-v2 model
-- **Semantic Search**: Uses BGE-M3 embeddings and cosine similarity for accurate content retrieval
-- **Intelligent Responses**: LLaMA 3.2 generates contextual answers with video timestamps
-- **Multi-language Support**: Translates Hindi audio to English text
-- **Real-time Query Processing**: Fast response times with GPU acceleration
-
-##  Architecture
 ```
-Videos → Audio Extraction → Whisper STT → Text Chunks
-                                              ↓
-                                         BGE-M3 Embeddings
-                                              ↓
-User Query → Query Embedding → Cosine Similarity → Top Results
-                                                         ↓
-                                               LLaMA 3.2 (Ollama)
-                                                         ↓
-                                                  Final Answer
+Lecture videos -> FFmpeg audio extraction -> Whisper large-v2 (speech-to-text, Hindi->English translation)
+        |
+Text chunks with timestamps (7,252 real chunks)
+        |
+BGE-M3 embeddings (1024-dim) via Ollama
+        |
+   +----------------+----------------+
+   |                                 |
+FAISS IVF-Flat dense search    BM25 keyword search
+   |                                 |
+   +----------------+----------------+
+                     |
+       Reciprocal Rank Fusion (merges both ranked lists)
+                     |
+       Cross-encoder reranking (ms-marco-MiniLM-L-6-v2)
+                     |
+           LLaMA 3.2 (via Ollama) generates the answer
+                     |
+              Answer + video timestamp
 ```
 
-##  Tech Stack
+## Measured Results
 
-- **Speech-to-Text**: OpenAI Whisper (large-v2)
-- **Embeddings**: BGE-M3 via Ollama
-- **Vector Search**: FAISS, Scikit-learn (cosine similarity)
-- **LLM**: LLaMA 3.2 via Ollama
-- **Processing**: Python, Pandas, NumPy, Joblib
+| Metric | Result | How it was measured |
+|--------|--------|----------------------|
+| Dataset | 7,252 real chunks, 18 lecture videos | Loaded directly from `embeddings.joblib` |
+| FAISS search speed | **57x faster** than brute-force cosine similarity | Benchmarked: 11.95ms -> 0.21ms per query, same dataset |
+| Embedding dimension | 1024 (BGE-M3) | Verified directly from the saved embedding vectors |
+| Retrieval correctness | FAISS results match brute-force top-5 exactly in most queries; the rare 1-result difference is the expected recall/speed trade-off of approximate search | Verified by cross-checking both methods on multiple real queries |
+| End-to-end latency, relevance over many queries | `[run inference.py with Ollama running and fill in your own measured numbers]` | Requires a live Ollama server, not reproducible in a CI sandbox |
 
-##  Performance Metrics
+## Why hybrid retrieval (FAISS + BM25 + reranking)
+- **FAISS (dense/semantic)** catches meaning-based matches even with no shared words.
+- **BM25 (sparse/keyword)** reliably catches exact technical terms (e.g. "z-index") that dense embeddings sometimes under-rank.
+- **Reciprocal Rank Fusion** combines both ranked lists without needing to normalize incompatible score scales.
+- **Cross-encoder reranking** re-scores the top ~15 fused candidates by reading the query and each chunk together, catching relationships separate-embedding search misses. Too slow to run on all 7,252 chunks, so it only runs on the shortlist - the standard "retrieve cheap, rerank precise" pattern.
 
-- **Query Response Time**: 70% faster than baseline
-- **Relevance Score**: 90%+ accuracy
-- **Processed Content**: 50+ hours of video lectures
-- **Total Queries Handled**: 1000+
+## Tech Stack
+- Speech-to-Text: OpenAI Whisper (large-v2)
+- Embeddings: BGE-M3 (1024-dim) via Ollama
+- Dense retrieval: FAISS (IVF-Flat index)
+- Sparse retrieval: BM25 (rank_bm25)
+- Fusion: Reciprocal Rank Fusion
+- Reranking: cross-encoder/ms-marco-MiniLM-L-6-v2 (sentence-transformers)
+- LLM: LLaMA 3.2 via Ollama
+- Processing: Python, Pandas, NumPy, Joblib
 
-##  Quick Start
-
-### Prerequisites
-
-- Python 3.8+
-- Ollama installed locally
-- FFmpeg (for video to audio conversion)
-- CUDA-compatible GPU (optional, for acceleration)
-
-### Installation
-```bash
-# Clone repository
-git clone https://github.com/Kaveri2109/rag-teaching-assistant.git
-cd rag-teaching-assistant
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Ollama models
-ollama pull llama3.2
-ollama pull bge-m3
-```
-
-### Project Structure
+## Project Structure
 ```
 rag-teaching-assistant/
-├── videos/              # Place your video files here
-├── audios/              # Converted audio files (MP3)
-├── jsons/               # Transcribed text with timestamps
-├── embeddings.joblib    # Vector database
-├── video_to_mp3.py      # Step 1: Video to audio conversion
-├── mp3_to_json.py       # Step 2: Audio transcription
-├── preprocess_json.py   # Step 3: Create embeddings
-├── inference.py         # Step 4: Query the system
+├── jsons/                  # Real transcribed lecture chunks with timestamps
+├── embeddings.joblib       # 7,252 real BGE-M3 embeddings (1024-dim)
+├── faiss_index.bin         # Pre-built FAISS IVF-Flat index
+├── video_to_mp3.py         # Step 1: video to audio
+├── mp3_to_json.py          # Step 2: Whisper transcription
+├── preprocess_json.py      # Step 3: generate embeddings
+├── build_faiss_index.py    # Step 4: build the FAISS index
+├── hybrid_retrieval.py     # FAISS + BM25 + RRF fusion + cross-encoder rerank
+├── inference.py            # Step 5: ask a question, get an answer
 ├── requirements.txt
-├── USAGE.md             # Detailed usage instructions
 └── README.md
 ```
 
-##  Usage
-
-See [USAGE.md](USAGE.md) for detailed step-by-step instructions.
-
-### Quick Example
+## Quick Start
 ```bash
-# Step 1: Convert videos to audio
-python video_to_mp3.py
-
-# Step 2: Transcribe audio
-python mp3_to_json.py
-
-# Step 3: Generate embeddings
-python preprocess_json.py
-
-# Step 4: Query the system
+git clone https://github.com/Kaveri2109/rag-teaching-assistant.git
+cd rag-teaching-assistant
+pip install -r requirements.txt
+ollama pull llama3.2
+ollama pull bge-m3
 python inference.py
 ```
 
-Example query:
+## Example Query
 ```
 Ask a Question: Where is HTML concluded in this course?
 
-Response: HTML is concluded in Video 13 titled "Entities, Code tag and more on HTML" 
-at timestamp 520.32 seconds (8 minutes 40 seconds). The instructor mentions 
-"HTML has been concluded" at this point.
+Response: HTML is concluded in Video 13 titled "Entities, Code tag and more on HTML"
+at timestamp 520.32 seconds (8 minutes 40 seconds).
 ```
 
-##  How It Works
+## Author
+Kaveri Anil Ghatage
+LinkedIn: kaverighatage | GitHub: Kaveri2109
 
-1. **Video Processing**: Extracts audio from video lectures using FFmpeg
-2. **Transcription**: Whisper converts audio to text with timestamps
-3. **Chunking**: Text is split into semantic chunks with metadata
-4. **Embedding**: BGE-M3 creates vector representations of each chunk
-5. **Storage**: Embeddings saved in Pandas DataFrame using Joblib
-6. **Retrieval**: User query converted to embedding, top-5 similar chunks retrieved
-7. **Generation**: LLaMA 3.2 generates answer with video references
-
-##  Configuration
-
-Edit parameters in `inference.py`:
-```python
-# Number of results to retrieve
-top_results = 5
-
-# LLM model selection
-model = "llama3.2"  # or "deepseek-r1"
-
-# Embedding model
-embedding_model = "bge-m3"
-```
-
-##  Results
-
-- Successfully processes Hindi lecture videos with translation
-- Provides precise timestamp references for content location
-- Handles complex multi-part questions
-- Guides users to specific video sections
-
-##  Future Enhancements
-
-- [ ] Add support for PDF document processing
-- [ ] Implement conversation history/context
-- [ ] Build web interface with Streamlit/Gradio
-- [ ] Support multiple languages beyond Hindi
-- [ ] Add voice-based query input
-- [ ] Integrate with popular LMS platforms
-
-##  Contributing
-
-Contributions welcome! Please open an issue or submit a pull request.
-
-##  License
-
-MIT License
-
-##  Author
-
-**Kaveri Anil Ghatage**
-- LinkedIn: [kaverighatage](https://linkedin.com/in/kaverighatage)
-- Email: kaverighatage336@gmail.com
-- GitHub: [Kaveri2109](https://github.com/Kaveri2109)
-
-##  Acknowledgments
-
-- OpenAI Whisper for speech recognition
-- Meta AI for LLaMA models
-- Ollama for easy LLM deployment
-- BGE team for embedding models
-
----
-
-⭐ If this project helped you, please give it a star!
-```
-
----
+## Achievements
+- Kaggle Top 10%: Ranked 367/3,724 | XGBoost + SMOTE | 0.89 AUC-ROC
+- GATE 2025 Qualified (ECE)
+- IEEE Published Researcher 2025
