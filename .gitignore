@@ -23,7 +23,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# Large Files - DO NOT COMMIT
+# Large raw media - never commit these (they're huge and not the point)
 videos/
 audios/*.mp3
 *.mp4
@@ -31,15 +31,11 @@ audios/*.mp3
 *.mkv
 *.mov
 
-# Model & Data Files
-embeddings.joblib
-*.pkl
+# NOTE: embeddings.joblib and faiss_index.bin are intentionally NOT
+# ignored - they're the real evidence this project actually ran on
+# real data. Do not add them back here.
 *.h5
-*.pth
 *.onnx
-
-# JSON outputs (optional - include if small)
-# jsons/
 
 # IDE
 .vscode/
@@ -60,6 +56,7 @@ embeddings.joblib
 *.log
 logs/
 
-# Test files
+# Regenerated every run - not useful to track, but keep one good example
+# pasted into README.md instead (see "Example Query" section)
 prompt.txt
 response.txt
