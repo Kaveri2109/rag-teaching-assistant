@@ -1,19 +1,9 @@
-import pandas as pd 
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np 
-import joblib 
+import pandas as pd
+import numpy as np
+import joblib
 import requests
+from hybrid_retrieval import hybrid_retrieve
 
-
-def create_embedding(text_list):
-    # https://github.com/ollama/ollama/blob/main/docs/api.md#generate-embeddings
-    r = requests.post("http://localhost:11434/api/embed", json={
-        "model": "bge-m3",
-        "input": text_list
-    })
-
-    embedding = r.json()["embeddings"] 
-    return embedding
 
 def inference(prompt):
     r = requests.post("http://localhost:11434/api/generate", json={
@@ -27,22 +17,14 @@ def inference(prompt):
     print(response)
     return response
 
-df = joblib.load('embeddings.joblib')
-
 
 incoming_query = input("Ask a Question: ")
-question_embedding = create_embedding([incoming_query])[0] 
 
-# Find similarities of question_embedding with other embeddings
-# print(np.vstack(df['embedding'].values))
-# print(np.vstack(df['embedding']).shape)
-similarities = cosine_similarity(np.vstack(df['embedding']), [question_embedding]).flatten()
-# print(similarities)
-top_results = 5
-max_indx = similarities.argsort()[::-1][0:top_results]
-# print(max_indx)
-new_df = df.loc[max_indx] 
-# print(new_df[["title", "number", "text"]])
+# Hybrid retrieval: FAISS dense search + BM25 keyword search, fused with
+# Reciprocal Rank Fusion, then refined by a cross-encoder reranker.
+# See hybrid_retrieval.py for the full explanation of why each stage exists.
+new_df = hybrid_retrieve(incoming_query, dense_k=20, sparse_k=20, fused_k=15, final_k=5)
+# print(new_df[["title", "number", "text", "rerank_score"]])
 
 prompt = f'''I am teaching web development in my Sigma web development course. Here are video subtitle chunks containing video title, video number, start time in seconds, end time in seconds, the text at that time:
 
